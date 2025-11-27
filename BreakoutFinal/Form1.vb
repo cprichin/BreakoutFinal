@@ -1,4 +1,13 @@
 ﻿Imports Microsoft.VisualBasic.Devices
+Imports WMPLib
+
+
+' Music :
+' "Galactic Rap"
+' Kevin MacLeod (incompetech.com)
+' Licensed under Creative Commons: By Attribution 4.0
+' https://creativecommons.org/licenses/by/4.0/
+
 
 Public Class Form1
     Private paddleRect As Rectangle
@@ -21,6 +30,8 @@ Public Class Form1
     Private bestTimeEasy As Integer = 0
     Private bestTimeMedium As Integer = 0
     Private bestTimeHard As Integer = 0
+
+    Private musicPlayer As New WindowsMediaPlayer()
 
     Private timeShown As New Label() With {
         .Location = New Point(10, 30),
@@ -48,6 +59,12 @@ Public Class Form1
     Private rnd As New Random()
 
     Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
+        Dim musicPath As String = IO.Path.Combine(Application.StartupPath, "galactic_rap.mp3")
+        If IO.File.Exists(musicPath) Then
+            musicPlayer.URL = musicPath
+            musicPlayer.settings.setMode("loop", True)
+            musicPlayer.controls.play()
+        End If
         Me.Text = "Breakout !"
 
 
@@ -176,6 +193,7 @@ Public Class Form1
         bestTimeShown.Text = "Best time : " & If(GetCurrentBestTime() = 0, "--:--", formatTime(GetCurrentBestTime()))
         If currTime Mod 5 = 0 Then
             IncreaseBallSpeed(speedMult)
+            musicPlayer.SpeedRatio *= speedMult
         End If
     End Sub
     Private Sub IncreaseBallSpeed(scale As Single)
@@ -301,9 +319,7 @@ Public Class Form1
         e.Graphics.Clear(Color.Black)
         e.Graphics.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
 
-        If inMenu OrElse bricks Is Nothing Then
-            Return
-        End If
+        If bricks Is Nothing Then Return
 
         Using paddleBrush As New SolidBrush(Color.DeepSkyBlue)
             e.Graphics.FillRectangle(paddleBrush, paddleRect)
