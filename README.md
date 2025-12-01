@@ -11,4 +11,3 @@ https://creativecommons.org/licenses/by/4.0/
 TODO:
 - Power-Ups
 - Multi-Hit Bricks
-- Better collision detection (Check which side was hit, bounce accordingly)
