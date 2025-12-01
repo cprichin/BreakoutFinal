@@ -16,10 +16,11 @@ Public Class Form1
     Private ballSize As Integer = 14
 
     Private bricks As List(Of Brick)
-    Private brickRows As Integer = 5
-    Private brickCols As Integer = 10
+    Public brickRows As Integer = 5
+    Public brickCols As Integer = 10
     Private brickHeight As Integer = 20
     Private brickMargin As Integer = 5
+    Public totalHits As Integer = 0
 
     Private paddleWidth As Integer = 100
     Private paddleHeight As Integer = 15
@@ -48,7 +49,7 @@ Public Class Form1
         .AutoSize = True
     }
 
-    Private diff As Integer = -1 ' -1 = none selected; 0 easy; 1 medium; 2 hard
+    Public diff As Integer = -1 ' -1 = none selected; 0 easy; 1 medium; 2 hard
     Private speedMult As Decimal
     Private score As Integer
     Private running As Boolean
@@ -231,7 +232,7 @@ Public Class Form1
             For c = 0 To brickCols - 1
                 Dim x = brickMargin + c * (brickWidth + brickMargin)
                 Dim y = 40 + brickMargin + r * (brickHeight + brickMargin)
-                bricks.Add(New Brick(New Rectangle(x, y, brickWidth, brickHeight)))
+                bricks.Add(New Brick(New Rectangle(x, y, brickWidth, brickHeight), r))
             Next
         Next
     End Sub
@@ -287,8 +288,11 @@ Public Class Form1
                         ballVel.Y = Math.Abs(ballVel.Y)
                     End If
                 End If
-
-                bricks.RemoveAt(i)
+                If bricks(i).hitCount > 1 Then
+                    bricks(i).hitCount -= 1
+                Else
+                    bricks.RemoveAt(i)
+                End If
                 score += 1
                 Exit For
             End If
@@ -307,6 +311,7 @@ Public Class Form1
 
     Private Sub gameWin()
         running = False
+        totalHits = 0
         gameTimer.Stop()
         runTimer.Stop()
         SetBestTimeIfBetter()
@@ -323,6 +328,7 @@ Public Class Form1
         running = False
         gameTimer.Stop()
         runTimer.Stop()
+        totalHits = 0
         Dim result = MessageBox.Show("Game Over! You broke " & score & " bricks, and you survived for " & formatTime(currTime) & "!" & vbCrLf & "Play Again?", "Game Over", MessageBoxButtons.YesNo)
         If result = DialogResult.Yes Then
             StartGame()
@@ -337,6 +343,7 @@ Public Class Form1
         If runTimer IsNot Nothing Then runTimer.Stop()
         bricks = Nothing
         Invalidate()
+
     End Sub
 
     Protected Overrides Sub OnPaint(e As PaintEventArgs)
@@ -355,7 +362,7 @@ Public Class Form1
         End Using
 
         For Each b As Brick In bricks
-            Using brickBrush As New SolidBrush(Color.FromArgb(255, 60 + (b.Bounds.Y Mod 120), 120, 180))
+            Using brickBrush As New SolidBrush(b.DisplayColor)
                 e.Graphics.FillRectangle(brickBrush, b.Bounds)
             End Using
             Using pen As New Pen(Color.Black)
@@ -391,10 +398,32 @@ Module RectangleExtensions
     End Function
 End Module
 
+
 Public Class Brick
-    Public Sub New(bounds As Rectangle)
+    Private rnd As New Random()
+    Public Property Bounds As Rectangle
+    Public Property hitCount As Integer = 1
+    Public Property hasPower As Boolean = False
+    Public ReadOnly Property DisplayColor As Color
+        Get
+            If hitCount > 1 Then
+                Dim intensity = 100 + (Bounds.Y Mod 100)
+                Return Color.FromArgb(255, intensity, 60, 40)
+            Else
+                Return Color.FromArgb(255, 60 + (Bounds.Y Mod 120), 120, 180)
+            End If
+        End Get
+    End Property
+
+
+    Public Sub New(bounds As Rectangle, rowNum As Integer)
         Me.Bounds = bounds
+        If rnd.Next(8 * Form1.diff) = 0 Then hasPower = True
+        If (Form1.diff > 0 AndAlso rowNum < Form1.brickRows - rnd.Next(Form1.brickRows) AndAlso Form1.totalHits < Form1.brickRows + Form1.brickCols + (10 * Form1.diff)) Then
+            hitCount += 1
+            Form1.totalHits += 1
+        End If
     End Sub
 
-    Public Property Bounds As Rectangle
+
 End Class
