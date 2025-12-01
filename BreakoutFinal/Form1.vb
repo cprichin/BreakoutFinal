@@ -15,7 +15,7 @@ Public Class Form1
     Private ballVel As PointF
     Private ballSize As Integer = 14
 
-    Private bricks As List(Of Rectangle)
+    Private bricks As List(Of Brick)
     Private brickRows As Integer = 5
     Private brickCols As Integer = 10
     Private brickHeight As Integer = 20
@@ -224,14 +224,14 @@ Public Class Form1
     End Sub
 
     Private Sub CreateBricks()
-        bricks = New List(Of Rectangle)()
+        bricks = New List(Of Brick)()
         Dim totalMarginSpace = (brickCols + 1) * brickMargin
         Dim brickWidth As Integer = (ClientSize.Width - totalMarginSpace) \ brickCols
         For r = 0 To brickRows - 1
             For c = 0 To brickCols - 1
                 Dim x = brickMargin + c * (brickWidth + brickMargin)
                 Dim y = 40 + brickMargin + r * (brickHeight + brickMargin)
-                bricks.Add(New Rectangle(x, y, brickWidth, brickHeight))
+                bricks.Add(New Brick(New Rectangle(x, y, brickWidth, brickHeight)))
             Next
         Next
     End Sub
@@ -256,25 +256,21 @@ Public Class Form1
             ballVel.Y = -ballVel.Y
             Dim hitPos As Single = (ballRect.Center().X - paddleRect.X) / paddleRect.Width - 0.5F
             ballVel.X += hitPos * 4.0F
-
         End If
 
-
         For i = 0 To bricks.Count - 1
-            If ballRect.IntersectsWith(bricks(i)) Then
-                Dim curr = bricks(i)
+            If ballRect.IntersectsWith(bricks(i).Bounds) Then
+                Dim curr As Rectangle = bricks(i).Bounds
 
                 Dim overlapLeft = ballRect.Right - curr.Left
                 Dim overlapRight = curr.Right - ballRect.Left
                 Dim overlapTop = ballRect.Bottom - curr.Top
                 Dim overlapBottom = curr.Bottom - ballRect.Top
 
-
                 Dim minX = Math.Min(overlapLeft, overlapRight)
                 Dim minY = Math.Min(overlapTop, overlapBottom)
 
                 If minX < minY Then
-
                     If overlapLeft < overlapRight Then
                         ballPos.X = curr.Left - ballRect.Width
                         ballVel.X = -Math.Abs(ballVel.X)
@@ -283,7 +279,6 @@ Public Class Form1
                         ballVel.X = Math.Abs(ballVel.X)
                     End If
                 Else
-
                     If overlapTop < overlapBottom Then
                         ballPos.Y = curr.Top - ballRect.Height
                         ballVel.Y = -Math.Abs(ballVel.Y)
@@ -359,12 +354,12 @@ Public Class Form1
             e.Graphics.FillEllipse(ballBrush, CInt(ballPos.X), CInt(ballPos.Y), ballSize, ballSize)
         End Using
 
-        For Each b In bricks
-            Using brickBrush As New SolidBrush(Color.FromArgb(255, 60 + (b.Y Mod 120), 120, 180))
-                e.Graphics.FillRectangle(brickBrush, b)
+        For Each b As Brick In bricks
+            Using brickBrush As New SolidBrush(Color.FromArgb(255, 60 + (b.Bounds.Y Mod 120), 120, 180))
+                e.Graphics.FillRectangle(brickBrush, b.Bounds)
             End Using
             Using pen As New Pen(Color.Black)
-                e.Graphics.DrawRectangle(pen, b)
+                e.Graphics.DrawRectangle(pen, b.Bounds)
             End Using
         Next
     End Sub
@@ -395,3 +390,11 @@ Module RectangleExtensions
         Return New PointF(r.X + r.Width / 2.0F, r.Y + r.Height / 2.0F)
     End Function
 End Module
+
+Public Class Brick
+    Public Sub New(bounds As Rectangle)
+        Me.Bounds = bounds
+    End Sub
+
+    Public Property Bounds As Rectangle
+End Class
