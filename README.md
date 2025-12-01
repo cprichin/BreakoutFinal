@@ -10,4 +10,4 @@ https://creativecommons.org/licenses/by/4.0/
 
 TODO:
 - Power-Ups
-- Multi-Hit Bricks
+- Think of more things to do
