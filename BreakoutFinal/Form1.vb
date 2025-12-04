@@ -1,15 +1,20 @@
-﻿Imports Microsoft.VisualBasic.Devices
-Imports WMPLib
-
-
-' Music :
-' "Galactic Rap"
-' Kevin MacLeod (incompetech.com)
-' Licensed under Creative Commons: By Attribution 4.0
-' https://creativecommons.org/licenses/by/4.0/
-
+﻿Imports System.Runtime.CompilerServices
 
 Public Class Form1
+    Inherits Form
+
+    Private lifeCount As New Label() With {
+        .Location = New Point(
+                Math.Max(5, ClientSize.Width - .Width - 10),
+                Math.Max(5, ClientSize.Height - .Height - 10)
+            ),
+        .ForeColor = Color.White,
+        .BackColor = Color.Transparent,
+        .Text = "Lives Left: --",
+        .Visible = False,
+        .AutoSize = True
+    }
+
     Private paddleRect As Rectangle
     Private ballPos As PointF
     Private ballVel As PointF
@@ -32,7 +37,8 @@ Public Class Form1
     Private bestTimeMedium As Integer = 0
     Private bestTimeHard As Integer = 0
 
-    Private musicPlayer As New WindowsMediaPlayer()
+    Private musicPlayer As WMPLib.WindowsMediaPlayer
+
 
     Private timeShown As New Label() With {
         .Location = New Point(10, 30),
@@ -41,6 +47,7 @@ Public Class Form1
         .Visible = False,
         .AutoSize = True
     }
+
     Private bestTimeShown As New Label() With {
         .Location = New Point(10, 10),
         .ForeColor = Color.White,
@@ -49,36 +56,71 @@ Public Class Form1
         .AutoSize = True
     }
 
+    ' Status / countdown label
+    Private statusLabel As New Label() With {
+        .Location = New Point(
+            (ClientSize.Width - .Width) \ 2,
+            (ClientSize.Height - .Height) \ 2
+        ),
+        .ForeColor = Color.Yellow,
+        .BackColor = Color.Transparent,
+        .Visible = False,
+        .AutoSize = True
+    }
+
     Public diff As Integer = -1 ' -1 = none selected; 0 easy; 1 medium; 2 hard
-    Private speedMult As Decimal
+
+    ' Speed / difficulty
+    Private Const BASE_SPEED As Single = 5.0F
+    Private speedMult As Single
+
     Private score As Integer
     Private running As Boolean
     Private gameTimer As Timer
     Private runTimer As Timer
+
+    ' Multiple lives + start countdown
+    Private lives As Integer = 3
+    Private readyTimer As Timer
+    Private countdown As Integer = 0
+
     Private startButton As New Button() With {.Text = "Start Game", .Size = New Size(200, 100)}
     Private inMenu As Boolean = True
     Private rnd As New Random()
 
-    Private Sub Form1_Load(sender As Object, e As EventArgs) Handles MyBase.Load
+    Public Sub New()
+        ' Create music player instance
+        musicPlayer = New WMPLib.WindowsMediaPlayer()
+
+        ' Form initialization
+        Me.Text = "Breakout !"
+        Me.FormBorderStyle = FormBorderStyle.FixedSingle
+        Me.DoubleBuffered = True
+        Me.KeyPreview = True
+        Me.ClientSize = New Size(800, 600)
+
+        Controls.Add(startButton)
+        Controls.Add(timeShown)
+        Controls.Add(bestTimeShown)
+        Controls.Add(statusLabel)
+        Controls.Add(lifeCount)
+
+        AddHandler startButton.Click, AddressOf startButton_Click
+
+        CenterButtons()
+        StartMenu()
+    End Sub
+
+    Private Sub Form1_Load(sender As Object, e As EventArgs) ' Handles MyBase.Load
+        ' Avoid trying to play music inside the designer
+        ' If Not Me.DesignMode Then
         Dim musicPath As String = IO.Path.Combine(Application.StartupPath, "Assets", "galactic_rap.mp3")
         If IO.File.Exists(musicPath) Then
             musicPlayer.URL = musicPath
             musicPlayer.settings.setMode("loop", True)
             musicPlayer.controls.play()
         End If
-        Me.Text = "Breakout !"
-
-
-        Me.FormBorderStyle = FormBorderStyle.FixedSingle
-        Me.DoubleBuffered = True
-        Me.KeyPreview = True
-
-        Controls.Add(startButton)
-        Controls.Add(timeShown)
-        Controls.Add(bestTimeShown)
-        AddHandler startButton.Click, AddressOf startButton_Click
-
-        StartMenu()
+        'End If
     End Sub
 
     Private Function formatTime(ByVal Time As Integer) As String
@@ -128,6 +170,7 @@ Public Class Form1
         startButton.Visible = True
         timeShown.Visible = False
         bestTimeShown.Visible = True
+        statusLabel.Visible = False
         UpdateBestTimeLabel()
         Invalidate()
     End Sub
@@ -149,22 +192,24 @@ Public Class Form1
         Dim hardButton As New Button() With {.Text = "Hard", .Size = New Size(80, 30), .Location = New Point(190, 50)}
 
         AddHandler easyButton.Click, Sub()
-                                         brickRows = 4 : brickCols = 8 : paddleWidth = 120 : speedMult = 1D : diff = 0
+                                         brickRows = 4 : brickCols = 8 : paddleWidth = 120
+                                         speedMult = 1.0F : diff = 0
                                          DifficultySelected()
                                          difficultyForm.Close()
-
                                      End Sub
+
         AddHandler mediumButton.Click, Sub()
-                                           brickRows = 5 : brickCols = 10 : paddleWidth = 100 : speedMult = 1.05D : diff = 1
+                                           brickRows = 5 : brickCols = 10 : paddleWidth = 100
+                                           speedMult = 1.05F : diff = 1
                                            DifficultySelected()
                                            difficultyForm.Close()
-
                                        End Sub
+
         AddHandler hardButton.Click, Sub()
-                                         brickRows = 6 : brickCols = 12 : paddleWidth = 80 : speedMult = 1.1D : diff = 2
+                                         brickRows = 6 : brickCols = 12 : paddleWidth = 80
+                                         speedMult = 1.1F : diff = 2
                                          DifficultySelected()
                                          difficultyForm.Close()
-
                                      End Sub
 
         difficultyForm.Controls.AddRange({easyButton, mediumButton, hardButton})
@@ -174,72 +219,126 @@ Public Class Form1
     Private Sub DifficultySelected()
         startButton.Visible = False
         inMenu = False
-        gameTimer = New Timer() With {.Interval = 8} ' ~60 FPS
+
+        gameTimer = New Timer() With {.Interval = 8} ' ~120 FPS
         AddHandler gameTimer.Tick, AddressOf GameLoop
 
         runTimer = New Timer() With {.Interval = 1000} ' 1 second
         AddHandler runTimer.Tick, AddressOf RunTimer_Tick
+
+        readyTimer = New Timer() With {.Interval = 1000}
+        AddHandler readyTimer.Tick, AddressOf ReadyTimer_Tick
+
         UpdateBestTimeLabel()
         StartGame()
     End Sub
 
     Private Sub RunTimer_Tick(sender As Object, e As EventArgs)
         If Not running Then Return
+
         currTime += 1
         timeShown.Text = "Current time : " & formatTime(currTime)
         bestTimeShown.Text = "Best time : " & If(GetCurrentBestTime() = 0, "--:--", formatTime(GetCurrentBestTime()))
+
+        ' Every 5 seconds, increase ball speed and music rate
         If currTime Mod 5 = 0 Then
             IncreaseBallSpeed(speedMult)
             musicPlayer.settings.rate *= speedMult
         End If
     End Sub
+
     Private Sub IncreaseBallSpeed(scale As Single)
-        ' Normalize current velocity and reapply scaled magnitude
         Dim vx = ballVel.X
         Dim vy = ballVel.Y
-        Dim mag As Single = Math.Sqrt(vx * vx + vy * vy)
+        Dim mag As Single = CSng(Math.Sqrt(vx * vx + vy * vy))
         If mag <= 0.0001F Then Return
-        Dim newMag = mag * speedMult
+
+        Dim newMag = mag * scale
         ballVel.X = vx / mag * newMag
         ballVel.Y = vy / mag * newMag
     End Sub
+
     Private Sub StartGame()
+        statusLabel.Location = New Point(
+            (ClientSize.Width - statusLabel.Width) \ 2 - 45,
+            (ClientSize.Height - statusLabel.Height) \ 2 - 25
+        )
+        lifeCount.Location = New Point(ClientSize.Width - lifeCount.Width - 10, ClientSize.Height - lifeCount.Height - 10)
+        lifeCount.Visible = True
         musicPlayer.settings.rate = 1
         moveLeft = False
         moveRight = False
+
         score = 0
         currTime = 0
+        totalHits = 0
+        lives = 3
 
-        running = True
+        timeShown.Text = "Current time : 00:00"
         timeShown.Visible = True
         bestTimeShown.Visible = True
-        CreateBricks()
-        paddleRect = New Rectangle((ClientSize.Width - paddleWidth) \ 2, ClientSize.Height - 50, paddleWidth, paddleHeight)
-        ballPos = New PointF(ClientSize.Width / 2.0F, ClientSize.Height / 2.0F)
-        ballVel = New PointF(4.0F * If(rnd.Next(2) = 0, 1, -1), -5.0F)
-        timeShown.Text = "Current time : 00:00"
         UpdateBestTimeLabel()
-        gameTimer.Start()
-        runTimer.Start()
+
+        CreateBricks()
+        ResetBallAndPaddle()
+
+        ' Start with a countdown before play
+        running = False
+        countdown = 3
+        statusLabel.Text = "Get ready: " & countdown.ToString()
+        statusLabel.Visible = True
+
+        If gameTimer IsNot Nothing Then gameTimer.Stop()
+        If runTimer IsNot Nothing Then runTimer.Stop()
+        readyTimer.Start()
+
         Invalidate()
+    End Sub
+
+    Private Sub ResetBallAndPaddle()
+        paddleRect = New Rectangle((ClientSize.Width - paddleWidth) \ 2,
+                                   ClientSize.Height - 50,
+                                   paddleWidth,
+                                   paddleHeight)
+
+        ballPos = New PointF(ClientSize.Width / 2.0F, ClientSize.Height / 2.0F)
+        ballVel = New PointF(4.0F * If(rnd.Next(2) = 0, 1, -1), -BASE_SPEED)
+    End Sub
+
+    Private Sub ReadyTimer_Tick(sender As Object, e As EventArgs)
+        countdown -= 1
+
+        If countdown > 0 Then
+            statusLabel.Text = "Get ready: " & countdown.ToString()
+        Else
+            readyTimer.Stop()
+            statusLabel.Visible = False
+
+            running = True
+            gameTimer.Start()
+            runTimer.Start()
+        End If
     End Sub
 
     Private Sub CreateBricks()
         bricks = New List(Of Brick)()
+        totalHits = 0
         Dim totalMarginSpace = (brickCols + 1) * brickMargin
-        Dim brickWidth As Integer = (ClientSize.Width - totalMarginSpace) \ brickCols
+        Dim brickWidth As Integer = Math.Max(1, (ClientSize.Width - totalMarginSpace) \ brickCols)
+
         For r = 0 To brickRows - 1
             For c = 0 To brickCols - 1
                 Dim x = brickMargin + c * (brickWidth + brickMargin)
                 Dim y = 40 + brickMargin + r * (brickHeight + brickMargin)
-                bricks.Add(New Brick(New Rectangle(x, y, brickWidth, brickHeight), r))
+                Dim b As New Brick(New Rectangle(x, y, brickWidth, brickHeight), r, diff, brickRows, brickCols)
+                bricks.Add(b)
             Next
         Next
     End Sub
 
     Private Sub GameLoop(sender As Object, e As EventArgs)
         If Not running Then Return
-
+        lifeCount.Text = "Lives Left: " & lives.ToString()
         Dim paddleSpeed = 8
         If moveLeft Then paddleRect.X = Math.Max(0, paddleRect.X - paddleSpeed)
         If moveRight Then paddleRect.X = Math.Min(ClientSize.Width - paddleRect.Width, paddleRect.X + paddleSpeed)
@@ -247,11 +346,21 @@ Public Class Form1
         ballPos.X += ballVel.X
         ballPos.Y += ballVel.Y
 
+        ' Wall collisions
         If ballPos.X <= 0 Then ballPos.X = 0 : ballVel.X = -ballVel.X
-        If ballPos.X + ballSize >= ClientSize.Width Then ballPos.X = ClientSize.Width - ballSize : ballVel.X = -ballVel.X
-        If ballPos.Y <= 0 Then ballPos.Y = 0 : ballVel.Y = -ballVel.Y
+        If ballPos.X + ballSize >= ClientSize.Width Then
+            ballPos.X = ClientSize.Width - ballSize
+            ballVel.X = -ballVel.X
+        End If
+
+        If ballPos.Y <= 0 Then
+            ballPos.Y = 0
+            ballVel.Y = -ballVel.Y
+        End If
 
         Dim ballRect = New Rectangle(CInt(ballPos.X), CInt(ballPos.Y), ballSize, ballSize)
+
+        ' Paddle collision
         If ballRect.IntersectsWith(paddleRect) AndAlso ballVel.Y > 0 Then
             ballPos.Y = paddleRect.Y - ballSize
             ballVel.Y = -ballVel.Y
@@ -259,64 +368,92 @@ Public Class Form1
             ballVel.X += hitPos * 4.0F
         End If
 
-        For i = 0 To bricks.Count - 1
-            If ballRect.IntersectsWith(bricks(i).Bounds) Then
-                Dim curr As Rectangle = bricks(i).Bounds
+        ' Brick collisions
+        If bricks IsNot Nothing Then
+            For i = bricks.Count - 1 To 0 Step -1
+                Dim b = bricks(i)
+                If ballRect.IntersectsWith(b.Bounds) Then
+                    Dim curr As Rectangle = b.Bounds
 
-                Dim overlapLeft = ballRect.Right - curr.Left
-                Dim overlapRight = curr.Right - ballRect.Left
-                Dim overlapTop = ballRect.Bottom - curr.Top
-                Dim overlapBottom = curr.Bottom - ballRect.Top
+                    Dim overlapLeft = ballRect.Right - curr.Left
+                    Dim overlapRight = curr.Right - ballRect.Left
+                    Dim overlapTop = ballRect.Bottom - curr.Top
+                    Dim overlapBottom = curr.Bottom - ballRect.Top
 
-                Dim minX = Math.Min(overlapLeft, overlapRight)
-                Dim minY = Math.Min(overlapTop, overlapBottom)
+                    Dim minX = Math.Min(overlapLeft, overlapRight)
+                    Dim minY = Math.Min(overlapTop, overlapBottom)
 
-                If minX < minY Then
-                    If overlapLeft < overlapRight Then
-                        ballPos.X = curr.Left - ballRect.Width
-                        ballVel.X = -Math.Abs(ballVel.X)
+                    If minX < minY Then
+                        If overlapLeft < overlapRight Then
+                            ballPos.X = curr.Left - ballRect.Width
+                            ballVel.X = -Math.Abs(ballVel.X)
+                        Else
+                            ballPos.X = curr.Right
+                            ballVel.X = Math.Abs(ballVel.X)
+                        End If
                     Else
-                        ballPos.X = curr.Right
-                        ballVel.X = Math.Abs(ballVel.X)
+                        If overlapTop < overlapBottom Then
+                            ballPos.Y = curr.Top - ballRect.Height
+                            ballVel.Y = -Math.Abs(ballVel.Y)
+                        Else
+                            ballPos.Y = curr.Bottom
+                            ballVel.Y = Math.Abs(ballVel.Y)
+                        End If
                     End If
-                Else
-                    If overlapTop < overlapBottom Then
-                        ballPos.Y = curr.Top - ballRect.Height
-                        ballVel.Y = -Math.Abs(ballVel.Y)
-                    Else
-                        ballPos.Y = curr.Bottom
-                        ballVel.Y = Math.Abs(ballVel.Y)
-                    End If
-                End If
-                If bricks(i).hitCount > 1 Then
-                    bricks(i).hitCount -= 1
-                Else
-                    bricks.RemoveAt(i)
-                End If
-                score += 1
-                Exit For
-            End If
-        Next
 
-        If bricks.Count = 0 Then
+                    ' Multi-hit brick logic
+                    If b.hitCount > 1 Then
+                        b.hitCount -= 1
+                    Else
+                        bricks.RemoveAt(i)
+                    End If
+
+                    score += 1
+                    Exit For
+                End If
+            Next
+            lifeCount.BringToFront()
+        End If
+
+        ' Win / lose logic
+        If bricks IsNot Nothing AndAlso bricks.Count = 0 Then
             gameWin()
-            paddleSpeed = 0
         ElseIf ballPos.Y > ClientSize.Height Then
-            gameOver()
-            paddleSpeed = 0
+            LoseLife()
         End If
 
         Invalidate()
     End Sub
 
+    Private Sub LoseLife()
+        running = False
+        If gameTimer IsNot Nothing Then gameTimer.Stop()
+        If runTimer IsNot Nothing Then runTimer.Stop()
+
+        lives -= 1
+        lifeCount.Text = "Lives Left: " & lives.ToString()
+        If lives > 0 Then
+            ResetBallAndPaddle()
+            countdown = 2
+            statusLabel.Text = "Life lost! Lives left: " & lives.ToString()
+            statusLabel.Visible = True
+            readyTimer.Start()
+            Invalidate()
+        Else
+            gameOver()
+        End If
+    End Sub
+
     Private Sub gameWin()
         running = False
         totalHits = 0
-        gameTimer.Stop()
-        runTimer.Stop()
+        If gameTimer IsNot Nothing Then gameTimer.Stop()
+        If runTimer IsNot Nothing Then runTimer.Stop()
         SetBestTimeIfBetter()
         UpdateBestTimeLabel()
-        Dim result = MessageBox.Show("You Win! Time: " & formatTime(currTime) & vbCrLf & "Play Again?", "You Win!", MessageBoxButtons.YesNo)
+
+        Dim result = MessageBox.Show("You Win! Time: " & formatTime(currTime) &
+                                     vbCrLf & "Play Again?", "You Win!", MessageBoxButtons.YesNo)
         If result = DialogResult.Yes Then
             StartGame()
         Else
@@ -326,10 +463,13 @@ Public Class Form1
 
     Private Sub gameOver()
         running = False
-        gameTimer.Stop()
-        runTimer.Stop()
+        If gameTimer IsNot Nothing Then gameTimer.Stop()
+        If runTimer IsNot Nothing Then runTimer.Stop()
         totalHits = 0
-        Dim result = MessageBox.Show("Game Over! You broke " & score & " bricks, and you survived for " & formatTime(currTime) & "!" & vbCrLf & "Play Again?", "Game Over", MessageBoxButtons.YesNo)
+
+        Dim result = MessageBox.Show("Game Over! You broke " & score &
+                                     " bricks, and you survived for " & formatTime(currTime) & "!" &
+                                     vbCrLf & "Play Again?", "Game Over", MessageBoxButtons.YesNo)
         If result = DialogResult.Yes Then
             StartGame()
         Else
@@ -341,9 +481,9 @@ Public Class Form1
         running = False
         If gameTimer IsNot Nothing Then gameTimer.Stop()
         If runTimer IsNot Nothing Then runTimer.Stop()
+        If readyTimer IsNot Nothing Then readyTimer.Stop()
         bricks = Nothing
         Invalidate()
-
     End Sub
 
     Protected Overrides Sub OnPaint(e As PaintEventArgs)
@@ -374,7 +514,6 @@ Public Class Form1
     Private Sub Form1_KeyDown(sender As Object, e As KeyEventArgs) Handles MyBase.KeyDown
         If e.KeyCode = Keys.Left Then moveLeft = True
         If e.KeyCode = Keys.Right Then moveRight = True
-
     End Sub
 
     Private Sub Form1_KeyUp(sender As Object, e As KeyEventArgs) Handles MyBase.KeyUp
@@ -384,26 +523,29 @@ Public Class Form1
 
     Private Sub Form1_FormClosed(sender As Object, e As FormClosedEventArgs) Handles Me.FormClosed
         Try
-            musicPlayer.controls.stop()
-            musicPlayer.close()
+            If musicPlayer IsNot Nothing Then
+                musicPlayer.controls.stop()
+                musicPlayer.close()
+            End If
         Catch
         End Try
     End Sub
 End Class
 
-Module RectangleExtensions
-    <System.Runtime.CompilerServices.Extension>
+Public Module RectangleExtensions
+    <Extension()>
     Public Function Center(r As Rectangle) As PointF
         Return New PointF(r.X + r.Width / 2.0F, r.Y + r.Height / 2.0F)
     End Function
 End Module
 
-
 Public Class Brick
-    Private rnd As New Random()
+    Private Shared rnd As New Random()
+
     Public Property Bounds As Rectangle
     Public Property hitCount As Integer = 1
     Public Property hasPower As Boolean = False
+
     Public ReadOnly Property DisplayColor As Color
         Get
             If hitCount > 1 Then
@@ -415,15 +557,15 @@ Public Class Brick
         End Get
     End Property
 
-
-    Public Sub New(bounds As Rectangle, rowNum As Integer)
+    Public Sub New(bounds As Rectangle, rowNum As Integer, diff As Integer, brickRows As Integer, brickCols As Integer)
         Me.Bounds = bounds
-        If rnd.Next(8 * Form1.diff) = 0 Then hasPower = True
-        If (Form1.diff > 0 AndAlso rowNum < Form1.brickRows - rnd.Next(Form1.brickRows) AndAlso Form1.totalHits < Form1.brickRows + Form1.brickCols + (10 * Form1.diff)) Then
+
+        If diff > 0 AndAlso rnd.Next(Math.Max(1, 8 * diff)) = 0 Then
+            hasPower = True
+        End If
+
+        If diff > 0 AndAlso rowNum < brickRows - rnd.Next(Math.Max(1, brickRows)) Then
             hitCount += 1
-            Form1.totalHits += 1
         End If
     End Sub
-
-
 End Class
