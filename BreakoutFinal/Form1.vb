@@ -1,4 +1,4 @@
-﻿Imports Microsoft.VisualBasic.Devices
+Imports Microsoft.VisualBasic.Devices
 Imports WMPLib
 
 
@@ -351,48 +351,46 @@ Public Class Form1
             Dim hitPos As Single = (ballRect.Center().X - paddleRect.X) / paddleRect.Width - 0.5F
             ballVel.X += hitPos * 4.0F
         End If
-        If Not (bricks.Count - 1) = 0 Then
-            For i = 0 To bricks.Count - 1
-                If ballRect.IntersectsWith(bricks(i).Bounds) Then
-                    Dim curr As Rectangle = bricks(i).Bounds
 
-                    Dim overlapLeft = ballRect.Right - curr.Left
-                    Dim overlapRight = curr.Right - ballRect.Left
-                    Dim overlapTop = ballRect.Bottom - curr.Top
-                    Dim overlapBottom = curr.Bottom - ballRect.Top
+        For i = 0 To bricks.Count - 1
+            If ballRect.IntersectsWith(bricks(i).Bounds) Then
+                Dim curr As Rectangle = bricks(i).Bounds
 
-                    Dim minX = Math.Min(overlapLeft, overlapRight)
-                    Dim minY = Math.Min(overlapTop, overlapBottom)
+                Dim overlapLeft = ballRect.Right - curr.Left
+                Dim overlapRight = curr.Right - ballRect.Left
+                Dim overlapTop = ballRect.Bottom - curr.Top
+                Dim overlapBottom = curr.Bottom - ballRect.Top
 
-                    If minX < minY Then
-                        If overlapLeft < overlapRight Then
-                            ballPos.X = curr.Left - ballRect.Width
-                            ballVel.X = -Math.Abs(ballVel.X)
-                        Else
-                            ballPos.X = curr.Right
-                            ballVel.X = Math.Abs(ballVel.X)
-                        End If
+                Dim minX = Math.Min(overlapLeft, overlapRight)
+                Dim minY = Math.Min(overlapTop, overlapBottom)
+
+                If minX < minY Then
+                    If overlapLeft < overlapRight Then
+                        ballPos.X = curr.Left - ballRect.Width
+                        ballVel.X = -Math.Abs(ballVel.X)
                     Else
-                        If overlapTop < overlapBottom Then
-                            ballPos.Y = curr.Top - ballRect.Height
-                            ballVel.Y = -Math.Abs(ballVel.Y)
-                        Else
-                            ballPos.Y = curr.Bottom
-                            ballVel.Y = Math.Abs(ballVel.Y)
-                        End If
+                        ballPos.X = curr.Right
+                        ballVel.X = Math.Abs(ballVel.X)
                     End If
-                    If bricks(i).hitCount > 1 Then
-                        bricks(i).hitCount -= 1
+                Else
+                    If overlapTop < overlapBottom Then
+                        ballPos.Y = curr.Top - ballRect.Height
+                        ballVel.Y = -Math.Abs(ballVel.Y)
                     Else
-                        bricks.RemoveAt(i)
+                        ballPos.Y = curr.Bottom
+                        ballVel.Y = Math.Abs(ballVel.Y)
                     End If
-                    score += 1
                 End If
+                If bricks(i).hitCount > 1 Then
+                    bricks(i).hitCount -= 1
+                Else
+                    bricks.RemoveAt(i)
+                End If
+                score += 1
                 Exit For
-
-            Next
-            lifeCount.BringToFront()
-        End If
+            End If
+        Next
+        lifeCount.BringToFront()
         If bricks.Count = 0 Then
             gameWin()
             paddleSpeed = 0
